@@ -27,7 +27,7 @@ Supported export formats:
 
 ## Installing Phage Commander
 1. Windows/Mac
-   a. Download from [https://github.com/sarah-harris/PhageCommander](https://github.com/AndrewH72/PhageCommander) by clicking on the green "Code" button above and selecting "Download ZIP".
+   a. Download from [https://github.com/AndrewH72/PhageCommander](https://github.com/AndrewH72/PhageCommander) by clicking on the green "Code" button above and selecting "Download ZIP".
    b. Go to your downloads folder and unzip Phage Commander with your favorite unzip program (I like 7-zip https://www.7-zip.org/).
    c. After unzipping, open the “PhageCommander-main” folder, then open the “phagecommander” subfolder, and then the “dist” subfolder, and then click on the phagecom.exe file to run.
 
