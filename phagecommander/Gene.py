@@ -646,47 +646,41 @@ class GeneUtils:
             direction = 1 if gene.direction == '+' else -1
             # (GRyde) ****************************************************************** start
             if gene.start > gene.stop:
-                firstJoinLocation = Bio.SeqFeature.FeatureLocation(gene.start - 1, len(seq))
-                secondJoinLocation = Bio.SeqFeature.FeatureLocation(0, gene.stop)
+                firstJoinLocation = Bio.SeqFeature.FeatureLocation(gene.start - 1, len(seq), strand=direction)
+                secondJoinLocation = Bio.SeqFeature.FeatureLocation(0, gene.stop, strand=direction)
                 combinedLocation = Bio.SeqFeature.CompoundLocation([firstJoinLocation, secondJoinLocation])
                 
                 geneFeature = Bio.SeqFeature.SeqFeature(combinedLocation,
                                                         type='gene',
-                                                        qualifiers={'gene': ind},
-                                                        strand=direction)
+                                                        qualifiers={'gene': ind})
                                                         
                 if isinstance(gene, Gene):
                     cdsFeature = Bio.SeqFeature.SeqFeature(combinedLocation,
                                                            type='CDS',
-                                                           qualifiers={'gene': ind},
-                                                           strand=direction)
+                                                           qualifiers={'gene': ind})
                 elif isinstance(gene, TRNA):
                     product = gene.type.split('(')[0]
                     cdsFeature = Bio.SeqFeature.SeqFeature(combinedLocation,
                                                            type='TRNA',
                                                            qualifiers={'gene': ind,
                                                                        'note': gene.type,
-                                                                       'product': product},
-                                                           strand=direction)
+                                                                       'product': product})
             else:
                 geneFeature = Bio.SeqFeature.SeqFeature(Bio.SeqFeature.FeatureLocation(gene.start - 1, gene.stop),
                                                         type='gene',
-                                                        qualifiers={'gene': ind},
-                                                        strand=direction)
+                                                        qualifiers={'gene': ind})
                                                         
                 if isinstance(gene, Gene):
                     cdsFeature = Bio.SeqFeature.SeqFeature(Bio.SeqFeature.FeatureLocation(gene.start - 1, gene.stop),
                                                            type='CDS',
-                                                           qualifiers={'gene': ind},
-                                                           strand=direction)
+                                                           qualifiers={'gene': ind})
                 elif isinstance(gene, TRNA):
                     product = gene.type.split('(')[0]
                     cdsFeature = Bio.SeqFeature.SeqFeature(Bio.SeqFeature.FeatureLocation(gene.start - 1, gene.stop),
                                                            type='TRNA',
                                                            qualifiers={'gene': ind,
                                                                        'note': gene.type,
-                                                                       'product': product},
-                                                           strand=direction)
+                                                                       'product': product})
             # (GRyde) Original code below in case catastrophic failure
             # geneFeature = Bio.SeqFeature.SeqFeature(Bio.SeqFeature.FeatureLocation(gene.start - 1, gene.stop),
                                                     # type='gene',
