@@ -653,7 +653,7 @@ class GeneUtils:
                 geneFeature = Bio.SeqFeature.SeqFeature(combinedLocation,
                                                         type='gene',
                                                         qualifiers={'gene': ind})
-                                                        
+
                 if isinstance(gene, Gene):
                     cdsFeature = Bio.SeqFeature.SeqFeature(combinedLocation,
                                                            type='CDS',
@@ -666,17 +666,17 @@ class GeneUtils:
                                                                        'note': gene.type,
                                                                        'product': product})
             else:
-                geneFeature = Bio.SeqFeature.SeqFeature(Bio.SeqFeature.FeatureLocation(gene.start - 1, gene.stop),
+                geneFeature = Bio.SeqFeature.SeqFeature(Bio.SeqFeature.FeatureLocation(gene.start - 1, gene.stop, strand=direction),
                                                         type='gene',
                                                         qualifiers={'gene': ind})
                                                         
                 if isinstance(gene, Gene):
-                    cdsFeature = Bio.SeqFeature.SeqFeature(Bio.SeqFeature.FeatureLocation(gene.start - 1, gene.stop),
+                    cdsFeature = Bio.SeqFeature.SeqFeature(Bio.SeqFeature.FeatureLocation(gene.start - 1, gene.stop, strand=direction),
                                                            type='CDS',
                                                            qualifiers={'gene': ind})
                 elif isinstance(gene, TRNA):
                     product = gene.type.split('(')[0]
-                    cdsFeature = Bio.SeqFeature.SeqFeature(Bio.SeqFeature.FeatureLocation(gene.start - 1, gene.stop),
+                    cdsFeature = Bio.SeqFeature.SeqFeature(Bio.SeqFeature.FeatureLocation(gene.start - 1, gene.stop, strand=direction),
                                                            type='TRNA',
                                                            qualifiers={'gene': ind,
                                                                        'note': gene.type,
