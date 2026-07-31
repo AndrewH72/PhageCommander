@@ -734,6 +734,7 @@ class SettingsDialog(QDialog):
 
         # UI Initializations
         self.initTableTab()
+        self.initToolsTab()
 
         # Layout
         layout.addWidget(self.tabWidget)
@@ -742,10 +743,58 @@ class SettingsDialog(QDialog):
         # Window Settings
         self.setWindowTitle('Settings')
         self.setWindowFlags(Qt.WindowCloseButtonHint)
+        self.setMinimumWidth(500)
 
     def initTableTab(self):
         self.tableTab = ColorTable(self.settings)
         self.tabWidget.addTab(self.tableTab, 'Table')
+
+    def initToolsTab(self):
+        """Initialize the tab for external tool executable like GeneMark"""
+        self.toolsTab = QWidget()
+        toolsLayout = QGridLayout()
+
+        self.gmLabel = QLabel("GeneMark Executable (gmsn.pl):")
+        # Text Box
+        self.gmLineEdit = QLineEdit()
+        # Load existing setting
+        self.gmLineEdit.setText(self.settings.value('GENE_MAIN/genemark_location', ""))
+        # Automatically save if user manually types/pastes a path
+        self.gmLineEdit.textChanged.connect(self.saveGeneMarkPath)
+        
+        # Browse Button
+        self.gmBrowseBtn = QPushButton("Browse...")
+        self.gmBrowseBtn.clicked.connect(self.browseGeneMark)
+
+        # Add widgets to layout (Row 0)
+        toolsLayout.addWidget(self.gmLabel, 0, 0)
+        toolsLayout.addWidget(self.gmLineEdit, 0, 1)
+        toolsLayout.addWidget(self.gmBrowseBtn, 0, 2)
+        
+        # Add a spacer to push everything to the top of the tab instead of floating in the middle
+        spacer = QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding)
+        toolsLayout.addItem(spacer, 1, 0, 1, 3)
+
+        self.toolsTab.setLayout(toolsLayout)
+        self.tabWidget.addTab(self.toolsTab, 'Tools')
+
+    @pyqtSlot()
+    def browseGeneMark(self):
+        """Opens a file dialog to locate the GeneMark executable"""
+        path, _ = QFileDialog.getOpenFileName(
+            self, 
+            "Select GeneMark Executable (e.g., gmsn.pl)",
+            "",
+            "All Files (*)"
+        )
+        if path:
+            self.gmLineEdit.setText(path)
+            self.saveGeneMarkPath(path) # Save immediately
+
+    def saveGeneMarkPath(self, text):
+        """Saves the path to settings whenever it changes"""
+        self.settings.setValue('GENE_MAIN/genemark_location', text.strip())
+
 
 
 class NewFileDialog(QDialog):
@@ -1082,6 +1131,10 @@ class QueryThread(QThread):
         # perform query
         # if query is unsuccessful, return the error instead
         try:
+            print(f"\n[STARTING] {self.tool} query...", flush=True)
+            print(f"DEBUG: The actual function being called is: {queryMethod}", flush=True)
+            import inspect
+            print(f"DEBUG FILE PATH: {inspect.getfile(queryMethod)}", flush=True)
             if self.tool == RAST:
                 username = self.queryData.rastUser
                 password = self.queryData.rastPass
@@ -1089,14 +1142,25 @@ class QueryThread(QThread):
                 queryMethod(self.geneFile, username, password, jobId=jobID)
             else:
                 queryMethod(self.geneFile)
+            print(f"[SUCCESS] {self.tool} query completed!")
         except Exception as e:
+            print(f"\n!!!!!!!! TOOL CRASHED: {self.tool} !!!!!!!!")
+            print(f"Error Details: {repr(e)}")
+            import traceback
+            traceback.print_exc()
             self.queryData.toolData[self.tool] = e
             return
             
         # (GRyde) Call to parse methods updated with third argument, which is length of gene sequence
         try:
+            print(f"[STARTING] Parsing {self.tool} data...")
             genes = parseMethod(self.geneFile.query_data[self.tool], identity=self.tool, totalLength=len(self.queryData.sequence))
+            print(f"[SUCCESS] {self.tool} parsing completed!")
         except Exception as e:
+            print(f"\n!!!!!!!! PARSER CRASHED: {self.tool} !!!!!!!!")
+            print(f"Error Details: {repr(e)}")
+            import traceback
+            traceback.print_exc()
             self.queryData.toolData[self.tool] = e
             return
             
@@ -1166,8 +1230,9 @@ class QueryManager(QThread):
 
         # keep waiting until all calls have returned
         for tool in self.queryData.toolData:
-            if self.queryData.toolData[tool] is None:
-                return
+            if self.queryData.tools[tool] is True:
+                if self.queryData.toolData[tool] is None:
+                    return
 
         self.exit()
 

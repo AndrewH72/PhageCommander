@@ -19,6 +19,7 @@ import Bio.SeqFeature
 import Bio.SeqRecord
 from Bio import SeqIO
 from PyQt5.QtCore import QSettings
+import tempfile
 from phagecommander.Utilities import RastPy, MetagenePy, Aragorn
 
 # Genemark Domains
@@ -29,6 +30,16 @@ GMS_DOMAIN = 'https://exon.gatech.edu/GeneMark/genemarks.cgi'
 HEURISTIC_DOMAIN = 'https://exon.gatech.edu/GeneMark/heuristic_gmhmmp.cgi'
 GMS2_DOMAIN = 'https://exon.gatech.edu/GeneMark/genemarks2.cgi'
 GLIMMER_DOMAIN = 'http://18.220.233.194/glimmer'  # Server DNA master uses
+
+def get_bundled_binary(binary_name):
+    """
+    Locates the bundled executable whether running from source or as a packaged app.
+    """
+    if getattr(sys, "frozen", False):
+        base_path = sys._MEIPASS
+    else:
+        base_path = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base_path, "bin", binary_name)
 
 # species
 # (GRyde) *****************************************************************************
@@ -115,92 +126,161 @@ class GeneFile:
         self.prodigalLocation = prodigalLocation
 
     def glimmer_query(self):
+        # """
+        # Queries Glimmer for DNA sequence
+        # """
+
+        # # parameters
+        # payload = [('sequence', self.file_info['file'][1]),
+        #            ('gencode', b'11'), ('topology', b'0'),
+        #            ('submit', b'Run GLIMMER v3.02')]
+
+        # # headers
+        # headers = {'User-Agent': 'GeneQuery'}
+
+        # # perform POST of file data
+        # file_post = requests.post(GLIMMER_DOMAIN, data=payload, headers=headers, timeout=30)
+        # file_post.raise_for_status()
+        # # check for job_key in response, if not raise error
+        # try:
+        #     if 'job_key' not in file_post.text:
+        #         raise GeneFile.GeneFileError("Glimmer POST #1: Invalid response")
+        # except GeneFile.GeneFileError:
+        #     raise
+
+        # # get job_key from response
+        # job_key = file_post.text.split('=')
+        # payload = [(job_key[0], job_key[1])]
+
+        # # query server for output file
+        # # if output file is not ready, wait 2 seconds and requery
+        # try:
+        #     time.sleep(2)
+        #     return_post = requests.post(GLIMMER_DOMAIN, data=payload, headers=headers, timeout=30)
+        #     return_post.raise_for_status()
+
+        #     maxAttempts = 15
+        #     attempts = 0
+        #     while return_post.status_code != 200:
+        #         if attempts >= maxAttempts:
+        #             raise Exception("Server timed out processing the job.")
+        #         print(f"Waiting on server... Attempt {attempts}/{maxAttempts}")
+        #         time.sleep(2)
+        #         return_post = requests.post(GLIMMER_DOMAIN, data=payload, headers=headers, timeout=30)
+        #         return_post.raise_for_status()
+        #         attempts += 1
+        # except requests.exceptions.HTTPError as e:
+        #     raise GeneFile.GeneFileError(
+        #         'Glimmer Server Error: Check for DNA for proper format or check server status')
+
+        # self.query_data['glimmer'] = return_post.content.decode('utf-8')
         """
-        Queries Glimmer for DNA sequence
+        Runs Glimmer v3 locally using bundled executables.    
         """
+        print("\n----> WE ACTUALLY ENTERED GLIMMER_QUERY! <----", flush=True)
+        sequence_data = self.file_info["file"][1]
+        if isinstance(sequence_data, bytes):
+            sequence_data = sequence_data.decode("utf-8")
+        build_icm_path = get_bundled_binary("build-icm")
+        glimmer3_path = get_bundled_binary("glimmer3")
 
-        # parameters
-        payload = [('sequence', self.file_info['file'][1]),
-                   ('gencode', b'11'), ('topology', b'0'),
-                   ('submit', b'Run GLIMMER v3.02')]
+        print(f"  -> Binary paths resolved:")
+        print(f"     ICM: {build_icm_path}")
+        print(f"     GLIMMER: {glimmer3_path}")
 
-        # headers
-        headers = {'User-Agent': 'GeneQuery'}
+        with tempfile.TemporaryDirectory() as tmpdir:
+            fasta_path = os.path.join(tmpdir, "sequence.fasta")
+            icm_path = os.path.join(tmpdir, "model.icm")
+            out_prefix = os.path.join(tmpdir, "glimmer_out")
 
-        # perform POST of file data
-        file_post = requests.post(GLIMMER_DOMAIN, data=payload, headers=headers)
-        file_post.raise_for_status()
-        # check for job_key in response, if not raise error
-        try:
-            if 'job_key' not in file_post.text:
-                raise GeneFile.GeneFileError("Glimmer POST #1: Invalid response")
-        except GeneFile.GeneFileError:
-            raise
+            with open(fasta_path, "w") as f:
+                if not sequence_data.startswith(">"):
+                    f.write(">Sequence\n")
+                f.write(sequence_data)
 
-        # get job_key from response
-        job_key = file_post.text.split('=')
-        payload = [(job_key[0], job_key[1])]
+            print(f"  -> Running build-icm...")
+            with open(fasta_path, "r") as infile:
+                subprocess.run([build_icm_path, icm_path], stdin=infile, check=True, cwd=tmpdir)
 
-        # query server for output file
-        # if output file is not ready, wait 2 seconds and requery
-        try:
-            time.sleep(2)
-            return_post = requests.post(GLIMMER_DOMAIN, data=payload, headers=headers)
-            return_post.raise_for_status()
-            while return_post.status_code != 200:
-                time.sleep(2)
-                return_post = requests.post(GLIMMER_DOMAIN, data=payload, headers=headers)
-                return_post.raise_for_status()
-        except requests.exceptions.HTTPError as e:
-            raise GeneFile.GeneFileError(
-                'Glimmer Server Error: Check for DNA for proper format or check server status')
+            print(f"  -> Running glimmer3...")
+            subprocess.run([glimmer3_path, fasta_path, icm_path, out_prefix], check=True, cwd=tmpdir)
 
-        self.query_data['glimmer'] = return_post.content.decode('utf-8')
-
+            print(f"  -> Reading output file...")
+            with open(out_prefix + ".predict", "r") as outfile:
+                self.query_data["glimmer"] = outfile.read()
+    
     def genemark_query(self):
+        # """
+        # Query to GeneMark
+        # """
+        # # parameters
+        # payload = [('sequence', self.file_info['file'][1]),
+        #            ('gencode', b'11'), ('topology', b'0'),
+        #            ('submit', b'Run GeneMark.hmm')]
+
+        # # headers
+        # headers = {'User-Agent': 'GeneQuery'}
+
+        # # perform POST of file data
+        # file_post = requests.post(GM_DOMAIN, data=payload, headers=headers, verify=False, timeout=30)
+        # file_post.raise_for_status()
+        # # check for job_key in response, if not raise error
+        # try:
+        #     if 'job_key' not in file_post.text:
+        #         raise GeneFile.GeneFileError("GeneMark - Invalid Response from server")
+        # except GeneFile.GeneFileError:
+        #     raise
+
+        # # get job_key from response
+        # job_key = file_post.text.split('=')
+        # payload = [(job_key[0], job_key[1])]
+
+        # # query server for output file
+        # # if output file is not ready, wait 2 seconds and requery
+        # try:
+        #     time.sleep(2)
+        #     return_post = requests.post(GM_DOMAIN, data=payload, headers=headers, timeout=30)
+        #     return_post.raise_for_status()
+        #     # if job is not ready, HTTP response code 202 is returned
+        #     maxAttempts = 15
+        #     attempts = 0
+        #     while return_post.status_code != 200:
+        #         if attempts >= maxAttempts:
+        #             raise Exception("Server timed out processing the job.")
+        #         print(f"Waiting on server... Attempt {attempts}/{maxAttempts}")
+        #         time.sleep(2)
+        #         return_post = requests.post(GM_DOMAIN, data=payload, headers=headers, timeout=30)
+        #         return_post.raise_for_status()
+        #         attempts += 1
+        # except requests.exceptions.HTTPError as e:
+        #     print(e)
+        #     raise GeneFile.GeneFileError(
+        #         'GeneMark Server Error: Check for DNA for proper format or check server status')
+
+        # self.query_data['gm'] = return_post.content.decode('utf-8')
+        # # End GeneMark Lookup -------------------------------------------------------
         """
-        Query to GeneMark
+        Runs GeneMark locally instead of via the dead AWS server.
         """
-        # parameters
-        payload = [('sequence', self.file_info['file'][1]),
-                   ('gencode', b'11'), ('topology', b'0'),
-                   ('submit', b'Run GeneMark.hmm')]
+        sequence_data = self.file_info['file'][1]
+        if isinstance(sequence_data, bytes):
+            sequence_data = sequence_data.decode('utf-8')
 
-        # headers
-        headers = {'User-Agent': 'GeneQuery'}
+        with tempfile.TemporaryDirectory() as tmpdir:
+            fasta_path = os.path.join(tmpdir, 'sequence.fasta')
+            
+            with open(fasta_path, 'w') as f:
+                if not sequence_data.startswith('>'):
+                    f.write(">Sequence\n")
+                f.write(sequence_data)
 
-        # perform POST of file data
-        file_post = requests.post(GM_DOMAIN, data=payload, headers=headers, verify=False)
-        file_post.raise_for_status()
-        # check for job_key in response, if not raise error
-        try:
-            if 'job_key' not in file_post.text:
-                raise GeneFile.GeneFileError("GeneMark - Invalid Response from server")
-        except GeneFile.GeneFileError:
-            raise
+            # Run GeneMark locally
+            subprocess.run(['gmsn.pl', '--phage', '--format', 'LST', 'sequence.fasta'], check=True, cwd=tmpdir)
 
-        # get job_key from response
-        job_key = file_post.text.split('=')
-        payload = [(job_key[0], job_key[1])]
-
-        # query server for output file
-        # if output file is not ready, wait 2 seconds and requery
-        try:
-            time.sleep(2)
-            return_post = requests.post(GM_DOMAIN, data=payload, headers=headers)
-            return_post.raise_for_status()
-            # if job is not ready, HTTP response code 202 is returned
-            while return_post.status_code != 200:
-                time.sleep(2)
-                return_post = requests.post(GM_DOMAIN, data=payload, headers=headers)
-                return_post.raise_for_status()
-        except requests.exceptions.HTTPError as e:
-            print(e)
-            raise GeneFile.GeneFileError(
-                'GeneMark Server Error: Check for DNA for proper format or check server status')
-
-        self.query_data['gm'] = return_post.content.decode('utf-8')
-        # End GeneMark Lookup -------------------------------------------------------
+            # Read the generated .lst file back into PhageCommander
+            out_file = os.path.join(tmpdir, 'sequence.fasta.lst')
+            with open(out_file, 'r') as outfile:
+                self.query_data['gm'] = outfile.read()
 
     def genemarkhmm_query(self):
         """
@@ -213,7 +293,7 @@ class GeneFile:
                        'email': ''}
 
         # GeneMark hmm post - if unsuccessful, error thrown
-        hmm_post_request = requests.post(GM_HMM_DOMAIN, files=self.file_info, data=gm_hmm_data)
+        hmm_post_request = requests.post(GM_HMM_DOMAIN, files=self.file_info, data=gm_hmm_data, timeout=30)
         hmm_post_request.raise_for_status()
         soup = BeautifulSoup(hmm_post_request.text, 'html.parser')
 
@@ -245,7 +325,7 @@ class GeneFile:
                     'subject': 'GeneMarkS', 'gcode': 11}
 
         # GeneMarkS post - if unsuccessful, error thrown
-        gms_post_request = requests.post(GMS_DOMAIN, files=self.file_info, data=gms_data)
+        gms_post_request = requests.post(GMS_DOMAIN, files=self.file_info, data=gms_data, timeout=30)
         gms_post_request.raise_for_status()
         soup = BeautifulSoup(gms_post_request.text, 'html.parser')
 
@@ -281,7 +361,7 @@ class GeneFile:
 
         # GeneMark Heuristic post - if unsuccessful, error thrown
         heuristic_post_request = requests.post(HEURISTIC_DOMAIN, files=self.file_info,
-                                               data=heuristic_data)
+                                               data=heuristic_data, timeout=30)
         heuristic_post_request.raise_for_status()
         soup = BeautifulSoup(heuristic_post_request.text, 'html.parser')
 
@@ -313,7 +393,7 @@ class GeneFile:
                       'email': '', 'subject': 'GeneMarkS-2', 'gcode': 11}
 
         # GeneMarkS2 Post Request
-        gmms2_post_request = requests.post(GMS2_DOMAIN, files=self.file_info, data=gmms2_data)
+        gmms2_post_request = requests.post(GMS2_DOMAIN, files=self.file_info, data=gmms2_data, timeout=30)
         gmms2_post_request.raise_for_status()
         soup = BeautifulSoup(gmms2_post_request.text, 'html.parser')
 
