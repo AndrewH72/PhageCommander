@@ -1131,10 +1131,6 @@ class QueryThread(QThread):
         # perform query
         # if query is unsuccessful, return the error instead
         try:
-            print(f"\n[STARTING] {self.tool} query...", flush=True)
-            print(f"DEBUG: The actual function being called is: {queryMethod}", flush=True)
-            import inspect
-            print(f"DEBUG FILE PATH: {inspect.getfile(queryMethod)}", flush=True)
             if self.tool == RAST:
                 username = self.queryData.rastUser
                 password = self.queryData.rastPass
@@ -1142,25 +1138,14 @@ class QueryThread(QThread):
                 queryMethod(self.geneFile, username, password, jobId=jobID)
             else:
                 queryMethod(self.geneFile)
-            print(f"[SUCCESS] {self.tool} query completed!")
         except Exception as e:
-            print(f"\n!!!!!!!! TOOL CRASHED: {self.tool} !!!!!!!!")
-            print(f"Error Details: {repr(e)}")
-            import traceback
-            traceback.print_exc()
             self.queryData.toolData[self.tool] = e
             return
             
         # (GRyde) Call to parse methods updated with third argument, which is length of gene sequence
         try:
-            print(f"[STARTING] Parsing {self.tool} data...")
             genes = parseMethod(self.geneFile.query_data[self.tool], identity=self.tool, totalLength=len(self.queryData.sequence))
-            print(f"[SUCCESS] {self.tool} parsing completed!")
         except Exception as e:
-            print(f"\n!!!!!!!! PARSER CRASHED: {self.tool} !!!!!!!!")
-            print(f"Error Details: {repr(e)}")
-            import traceback
-            traceback.print_exc()
             self.queryData.toolData[self.tool] = e
             return
             
@@ -1203,7 +1188,8 @@ class QueryManager(QThread):
 
         # create GeneFile
         self.geneFile = Gene.GeneFile(self.queryData.fileName, self.queryData.species,
-                                      self.settings.value(GeneMain._PRODIGAL_BINARY_LOCATION_SETTING))
+                                      self.settings.value(GeneMain._PRODIGAL_BINARY_LOCATION_SETTING),
+                                      self.settings.value("GENE_MAIN/genemark_location", ""))
 
         # load sequence
         # with open(self.queryData.fileName) as seqFile:

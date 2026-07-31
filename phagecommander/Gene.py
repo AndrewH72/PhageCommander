@@ -91,7 +91,7 @@ class GeneFile:
         def __init__(self, message):
             self.message = message
 
-    def __init__(self, sequence_file, species, prodigalLocation=None):
+    def __init__(self, sequence_file, species, prodigalLocation=None, genemark_path=""):
         """
         Constructor
         Generates necessary parameters for post requests from DNA fasta file
@@ -124,6 +124,7 @@ class GeneFile:
 
         # store prodigal location
         self.prodigalLocation = prodigalLocation
+        self.genemark_path = genemark_path
 
     def glimmer_query(self):
         # """
@@ -177,17 +178,11 @@ class GeneFile:
         """
         Runs Glimmer v3 locally using bundled executables.    
         """
-        print("\n----> WE ACTUALLY ENTERED GLIMMER_QUERY! <----", flush=True)
         sequence_data = self.file_info["file"][1]
         if isinstance(sequence_data, bytes):
             sequence_data = sequence_data.decode("utf-8")
         build_icm_path = get_bundled_binary("build-icm")
         glimmer3_path = get_bundled_binary("glimmer3")
-
-        print(f"  -> Binary paths resolved:")
-        print(f"     ICM: {build_icm_path}")
-        print(f"     GLIMMER: {glimmer3_path}")
-
         with tempfile.TemporaryDirectory() as tmpdir:
             fasta_path = os.path.join(tmpdir, "sequence.fasta")
             icm_path = os.path.join(tmpdir, "model.icm")
@@ -198,14 +193,11 @@ class GeneFile:
                     f.write(">Sequence\n")
                 f.write(sequence_data)
 
-            print(f"  -> Running build-icm...")
             with open(fasta_path, "r") as infile:
                 subprocess.run([build_icm_path, icm_path], stdin=infile, check=True, cwd=tmpdir)
 
-            print(f"  -> Running glimmer3...")
             subprocess.run([glimmer3_path, fasta_path, icm_path, out_prefix], check=True, cwd=tmpdir)
 
-            print(f"  -> Reading output file...")
             with open(out_prefix + ".predict", "r") as outfile:
                 self.query_data["glimmer"] = outfile.read()
     
@@ -262,6 +254,8 @@ class GeneFile:
         """
         Runs GeneMark locally instead of via the dead AWS server.
         """
+        if not self.genemark_path or not os.path.exists(self.genemark_path):
+            raise FileNotFoundError("GeneMark location is not configured. Please link it in the Settings. You will need to download GeneMark from https://exon.gatech.edu/GeneMark/license_download.cgi. Choose GeneMarkS v4.30 for your OS. Download both the program and key. You will want to link gmsn.pl.")
         sequence_data = self.file_info['file'][1]
         if isinstance(sequence_data, bytes):
             sequence_data = sequence_data.decode('utf-8')
@@ -275,8 +269,13 @@ class GeneFile:
                 f.write(sequence_data)
 
             # Run GeneMark locally
-            subprocess.run(['gmsn.pl', '--phage', '--format', 'LST', 'sequence.fasta'], check=True, cwd=tmpdir)
-
+            try:
+                subprocess.run([self.genemark_path, '--phage', '--format', 'LST', 'sequence.fasta'], check=True, cwd=tmpdir, capture_output=True, text=True)
+            except subprocess.CalledProcessError as e:
+                if "Bad CPU type" in e.stderr:
+                    raise RuntimeError("GeneMark Error: The Mac binary provided by Georgia Tech is 32-bit and incompatible with modern Apple Silicon. To run GeneMark, PhageCommander must be deployed on a Linux System.")
+                else:
+                    raise RuntimeError(f"GeneMark failed to execute: {e.stderr}")
             # Read the generated .lst file back into PhageCommander
             out_file = os.path.join(tmpdir, 'sequence.fasta.lst')
             with open(out_file, 'r') as outfile:
@@ -1420,7 +1419,7 @@ def excel_write(output_directory, files, sequence):
 
 
 if __name__ == '__main__':
-    file = 'D:\mdlaz\Documents\College\Research\programs\GeneQuery\\tests\sequences\Ronan.fasta'
+    file = r'D:\mdlaz\Documents\College\Research\programs\GeneQuery\\tests\sequences\Ronan.fasta'
     for seq in SeqIO.parse(file, 'fasta'):
         Dissequence = seq
     gfile = GeneFile(file, 'Paenibacillus_larvae_subsp_ATCC_9545')
